@@ -21,7 +21,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$ACCOUNT" == "work" ]]; then
-    PLIST_NAME="com.zulunity.onenote-todo-sync-work.plist"
+    PLIST_NAME="com.klg-tools.onenote-todo-sync-work.plist"
     AUTH_FLOW="manual"
     ACCOUNT_FLAG="--account work"
 else
