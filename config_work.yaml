@@ -1,0 +1,53 @@
+notebook_name: "Work Notebook"
+monitored_lists:
+  - "Today"
+  - "This Week"
+  - "Waiting"
+
+polling_interval_seconds: 30
+
+list_to_section_map:
+  "Today": "Today"
+  "This Week": "This Week"
+  "Waiting": "Waiting"
+
+rules:
+  positive_keywords:
+    - "prepare"
+    - "design"
+    - "research"
+    - "organize"
+    - "resolve"
+    - "plan"
+    - "proposal"
+    - "presentation"
+    - "project"
+    - "analyze"
+    - "evaluate"
+    - "document"
+    - "strategy"
+  negative_keywords:
+    - "pay"
+    - "buy"
+    - "call"
+    - "send"
+    - "mail"
+    - "print"
+    - "schedule"
+    - "remind"
+  force_onenote_prefix: "#onenote"
+  force_skip_prefix: "#simple"
+  min_words_for_complex: 8
+  score_threshold: 2
+
+weekly_review:
+  enabled: true
+  day: "sunday"
+  time: "18:00"
+  duration_minutes: 30
+
+logging:
+  level: "INFO"
+  file_path: "~/Library/Logs/OneNoteTodoSync/sync_work.log"
+  max_file_size_mb: 10
+  backup_count: 5

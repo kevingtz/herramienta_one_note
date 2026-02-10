@@ -1,0 +1,15 @@
+tests/
+.venv/
+venv/
+.env
+*.db
+.git/
+.gitignore
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+com.zulunity.onenote-todo-sync.plist
+setup.sh
+local.settings.json
+.claude/

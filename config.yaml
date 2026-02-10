@@ -1,0 +1,53 @@
+notebook_name: "My Notebook"
+monitored_lists:
+  - "Hoy"
+  - "Esta semana"
+  - "En espera"
+
+polling_interval_seconds: 30
+
+list_to_section_map:
+  "Hoy": "Hoy"
+  "Esta semana": "Esta semana"
+  "En espera": "En espera"
+
+rules:
+  positive_keywords:
+    - "preparar"
+    - "diseñar"
+    - "investigar"
+    - "organizar"
+    - "resolver"
+    - "planear"
+    - "propuesta"
+    - "presentación"
+    - "proyecto"
+    - "analizar"
+    - "evaluar"
+    - "documentar"
+    - "estrategia"
+  negative_keywords:
+    - "pagar"
+    - "comprar"
+    - "llamar"
+    - "enviar"
+    - "mandar"
+    - "imprimir"
+    - "agendar"
+    - "recordar"
+  force_onenote_prefix: "#onenote"
+  force_skip_prefix: "#simple"
+  min_words_for_complex: 8
+  score_threshold: 2
+
+weekly_review:
+  enabled: true
+  day: "sunday"
+  time: "18:00"
+  duration_minutes: 30
+
+logging:
+  level: "INFO"
+  file_path: "~/Library/Logs/OneNoteTodoSync/sync.log"
+  max_file_size_mb: 10
+  backup_count: 5
