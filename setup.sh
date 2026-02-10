@@ -2,11 +2,35 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PLIST_NAME="com.zulunity.onenote-todo-sync.plist"
 LOG_DIR="$HOME/Library/Logs/OneNoteTodoSync"
 DATA_DIR="$HOME/.onenote-todo-sync"
 
-echo "=== OneNote + To Do Sync - Setup ==="
+# Parse --account argument (default: personal)
+ACCOUNT="personal"
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --account)
+            ACCOUNT="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+if [[ "$ACCOUNT" == "work" ]]; then
+    PLIST_NAME="com.zulunity.onenote-todo-sync-work.plist"
+    AUTH_FLOW="manual"
+    ACCOUNT_FLAG="--account work"
+else
+    PLIST_NAME="com.zulunity.onenote-todo-sync.plist"
+    AUTH_FLOW="device_code"
+    ACCOUNT_FLAG=""
+fi
+
+echo "=== OneNote + To Do Sync - Setup ($ACCOUNT account) ==="
 echo ""
 
 # 1. Check Python version
@@ -48,6 +72,16 @@ if command -v az &> /dev/null; then
                 --api 00000003-0000-0000-c000-000000000000 \
                 --api-permissions 1ec239c2-d7c9-4623-a91a-a9775856bb36=Scope 2>&1 || true
             echo "  NOTE: You may need to grant admin consent in the Azure portal"
+
+            # For work/manual flow, add localhost redirect URI
+            if [[ "$ACCOUNT" == "work" ]]; then
+                echo "  Adding http://localhost:8400 redirect URI..."
+                az ad app update --id "$CLIENT_ID" --public-client-redirect-uris \
+                    "msal${CLIENT_ID}://auth" \
+                    "https://login.microsoftonline.com/common/oauth2/nativeclient" \
+                    "http://localhost" \
+                    "http://localhost:8400" 2>&1 || true
+            fi
         fi
     else
         echo "  WARNING: Azure CLI not logged in. Skipping permission setup."
@@ -75,10 +109,10 @@ mkdir -p "$DATA_DIR"
 mkdir -p "$PROJECT_DIR/logs"
 echo "  Directories created"
 
-# 6. Authenticate (device code flow)
-echo "[6/8] Running authentication..."
+# 6. Authenticate
+echo "[6/8] Running authentication ($AUTH_FLOW flow)..."
 echo ""
-python3 src/main.py --auth
+python3 src/main.py $ACCOUNT_FLAG --auth --auth-flow "$AUTH_FLOW"
 echo ""
 
 # 7. Run tests
@@ -101,7 +135,7 @@ launchctl load "$LAUNCH_AGENTS_DIR/$PLIST_NAME"
 echo "  Service installed and started"
 
 echo ""
-echo "=== Setup Complete ==="
+echo "=== Setup Complete ($ACCOUNT account) ==="
 echo ""
 echo "The sync daemon is now running."
 echo ""
@@ -110,4 +144,4 @@ echo "  Check status:  launchctl list | grep onenote-todo-sync"
 echo "  View logs:     tail -f ~/Library/Logs/OneNoteTodoSync/sync.log"
 echo "  Stop service:  launchctl unload ~/Library/LaunchAgents/$PLIST_NAME"
 echo "  Start service: launchctl load ~/Library/LaunchAgents/$PLIST_NAME"
-echo "  Run once:      source venv/bin/activate && python src/main.py --once"
+echo "  Run once:      source venv/bin/activate && python src/main.py $ACCOUNT_FLAG --once"

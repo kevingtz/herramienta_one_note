@@ -1,7 +1,12 @@
+from __future__ import annotations
+
 import json
 import logging
 import os
 import sys
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from urllib.parse import urlparse, parse_qs
 
 import msal
 import requests
@@ -39,7 +44,7 @@ class AuthManager:
         )
 
     def _load_cache(self):
-        os.makedirs(TOKEN_CACHE_DIR, exist_ok=True)
+        os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
         if os.path.exists(self.cache_path):
             with open(self.cache_path, "r") as f:
                 self.cache.deserialize(f.read())
@@ -68,6 +73,8 @@ class AuthManager:
 
         if self.auth_flow == "interactive":
             return self._interactive_flow()
+        elif self.auth_flow == "manual":
+            return self._manual_flow()
         return self._device_code_flow()
 
     def _device_code_flow(self) -> str:
@@ -120,6 +127,77 @@ class AuthManager:
         error_msg = result.get("error_description", result.get("error", "Unknown error"))
         raise RuntimeError(f"Interactive flow failed ({self.label}): {error_msg}")
 
+    def _manual_flow(self) -> str:
+        """Authorization code flow with a local HTTP server to capture the callback.
+
+        Works with Conditional Access policies, MFA, and restrictive tenants
+        because the user authenticates in their own browser.
+        """
+        redirect_uri = "http://localhost:8400"
+        flow = self.app.initiate_auth_code_flow(
+            scopes=self.scopes,
+            redirect_uri=redirect_uri,
+        )
+        if "auth_uri" not in flow:
+            raise RuntimeError(
+                f"Failed to create auth code flow ({self.label}): {json.dumps(flow, indent=2)}"
+            )
+
+        print(
+            "\n" + "=" * 60 + "\n"
+            f"AUTHENTICATION REQUIRED — {self.label}\n"
+            + "=" * 60 + "\n"
+            "Open this URL in your browser to sign in:\n\n"
+            f"  {flow['auth_uri']}\n\n"
+            "Waiting for callback on http://localhost:8400 ...\n"
+            + "=" * 60 + "\n"
+        )
+        sys.stdout.flush()
+        logger.info("Manual auth flow initiated (%s)", self.label)
+
+        # Capture the OAuth callback via a one-shot HTTP server
+        auth_response = self._wait_for_callback(port=8400)
+
+        result = self.app.acquire_token_by_auth_code_flow(flow, auth_response)
+        if "access_token" in result:
+            self._save_cache()
+            logger.info("Authentication successful via manual flow (%s)", self.label)
+            return result["access_token"]
+
+        error_msg = result.get("error_description", result.get("error", "Unknown error"))
+        raise RuntimeError(f"Manual auth flow failed ({self.label}): {error_msg}")
+
+    @staticmethod
+    def _wait_for_callback(port: int) -> dict:
+        """Start an HTTP server and wait for the OAuth redirect callback."""
+        auth_response = {}
+
+        class CallbackHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                qs = parse_qs(urlparse(self.path).query)
+                # Flatten single-value lists for MSAL compatibility
+                for key, value in qs.items():
+                    auth_response[key] = value[0] if len(value) == 1 else value
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.end_headers()
+                self.wfile.write(
+                    b"<html><body><h2>Authentication complete.</h2>"
+                    b"<p>You can close this tab.</p></body></html>"
+                )
+
+            def log_message(self, format, *args):
+                # Suppress default HTTP log output
+                pass
+
+        server = HTTPServer(("localhost", port), CallbackHandler)
+        server.handle_request()  # serve exactly one request
+        server.server_close()
+
+        if not auth_response:
+            raise RuntimeError("No auth response received from callback")
+        return auth_response
+
     def verify_connection(self) -> dict:
         """Verify the token works by calling /me endpoint."""
         token = self.get_token()
@@ -137,14 +215,16 @@ class AuthManager:
 
 def create_auth(client_id: str,
                 authority: str = "https://login.microsoftonline.com/consumers",
-                auth_flow: str = "device_code") -> AuthManager:
+                auth_flow: str = "device_code",
+                cache_path: str | None = None,
+                label: str = "personal") -> AuthManager:
     """Create AuthManager for a Microsoft account."""
     return AuthManager(
         client_id=client_id,
         authority=authority,
         scopes=SCOPES,
-        cache_path=TOKEN_CACHE_PATH,
-        label="personal",
+        cache_path=cache_path or TOKEN_CACHE_PATH,
+        label=label,
         auth_flow=auth_flow,
     )
 

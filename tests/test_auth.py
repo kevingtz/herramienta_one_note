@@ -136,6 +136,89 @@ class TestAuthManager:
         mock_get.assert_called_once()
 
 
+    @patch("src.auth.AuthManager._wait_for_callback")
+    @patch("src.auth.msal.PublicClientApplication")
+    def test_manual_flow_success(self, mock_app_cls, mock_wait):
+        mock_app = MagicMock()
+        mock_app_cls.return_value = mock_app
+        mock_app.get_accounts.return_value = []
+        mock_app.initiate_auth_code_flow.return_value = {
+            "auth_uri": "https://login.microsoftonline.com/auth?code=abc",
+            "state": "xyz",
+        }
+        mock_wait.return_value = {"code": "auth-code-123", "state": "xyz"}
+        mock_app.acquire_token_by_auth_code_flow.return_value = {
+            "access_token": "manual-token-789"
+        }
+
+        auth = AuthManager(
+            client_id="test-id",
+            authority="https://login.microsoftonline.com/organizations",
+            scopes=SCOPES,
+            cache_path="/tmp/test_cache.json",
+            label="work",
+            auth_flow="manual",
+        )
+        token = auth.get_token()
+
+        assert token == "manual-token-789"
+        mock_app.initiate_auth_code_flow.assert_called_once_with(
+            scopes=SCOPES,
+            redirect_uri="http://localhost:8400",
+        )
+        mock_app.acquire_token_by_auth_code_flow.assert_called_once()
+
+    @patch("src.auth.AuthManager._wait_for_callback")
+    @patch("src.auth.msal.PublicClientApplication")
+    def test_manual_flow_initiate_failure(self, mock_app_cls, mock_wait):
+        mock_app = MagicMock()
+        mock_app_cls.return_value = mock_app
+        mock_app.get_accounts.return_value = []
+        mock_app.initiate_auth_code_flow.return_value = {
+            "error": "invalid_client",
+        }
+
+        auth = AuthManager(
+            client_id="test-id",
+            authority="https://login.microsoftonline.com/organizations",
+            scopes=SCOPES,
+            cache_path="/tmp/test_cache.json",
+            label="work",
+            auth_flow="manual",
+        )
+
+        with pytest.raises(RuntimeError, match="Failed to create auth code flow"):
+            auth.get_token()
+
+    @patch("src.auth.AuthManager._wait_for_callback")
+    @patch("src.auth.msal.PublicClientApplication")
+    def test_manual_flow_token_exchange_failure(self, mock_app_cls, mock_wait):
+        mock_app = MagicMock()
+        mock_app_cls.return_value = mock_app
+        mock_app.get_accounts.return_value = []
+        mock_app.initiate_auth_code_flow.return_value = {
+            "auth_uri": "https://login.microsoftonline.com/auth",
+            "state": "xyz",
+        }
+        mock_wait.return_value = {"code": "auth-code-123", "state": "xyz"}
+        mock_app.acquire_token_by_auth_code_flow.return_value = {
+            "error": "invalid_grant",
+            "error_description": "Code expired",
+        }
+
+        auth = AuthManager(
+            client_id="test-id",
+            authority="https://login.microsoftonline.com/organizations",
+            scopes=SCOPES,
+            cache_path="/tmp/test_cache.json",
+            label="work",
+            auth_flow="manual",
+        )
+
+        with pytest.raises(RuntimeError, match="Manual auth flow failed"):
+            auth.get_token()
+
+
 class TestAuthFactory:
     @patch("src.auth.msal.PublicClientApplication")
     def test_create_auth(self, mock_app_cls):
@@ -143,3 +226,16 @@ class TestAuthFactory:
         assert auth.label == "personal"
         assert "consumers" in auth.authority
         assert auth.scopes == SCOPES
+
+    @patch("src.auth.msal.PublicClientApplication")
+    def test_create_auth_with_custom_cache_path(self, mock_app_cls):
+        auth = create_auth("client-123", cache_path="/tmp/custom_cache.json",
+                           label="work")
+        assert auth.cache_path == "/tmp/custom_cache.json"
+        assert auth.label == "work"
+
+    @patch("src.auth.msal.PublicClientApplication")
+    def test_create_auth_default_cache_path(self, mock_app_cls):
+        from src.auth import TOKEN_CACHE_PATH
+        auth = create_auth("client-123")
+        assert auth.cache_path == TOKEN_CACHE_PATH

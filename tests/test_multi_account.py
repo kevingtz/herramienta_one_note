@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from src.auth import BlobTokenCacheBackend, create_auth_azure
+from src.auth import BlobTokenCacheBackend, TOKEN_CACHE_PATH, create_auth, create_auth_azure
 from src.cache.table_cache import TableSyncCache
 
 
@@ -96,3 +96,33 @@ class TestMultiAccountParametrization:
             assert cache.TASKS_TABLE == "SyncedTasks"
             assert cache.LOG_TABLE == "SyncLog"
             assert cache.REVIEWS_TABLE == "WeeklyReviews"
+
+
+class TestLocalMultiAccount:
+    """Tests for local create_auth with cache_path/label parametrization."""
+
+    @patch("src.auth.msal.PublicClientApplication")
+    def test_personal_uses_default_cache(self, mock_app_cls):
+        auth = create_auth("client-123")
+        assert auth.cache_path == TOKEN_CACHE_PATH
+        assert auth.label == "personal"
+
+    @patch("src.auth.msal.PublicClientApplication")
+    def test_work_uses_custom_cache(self, mock_app_cls):
+        custom_path = "/tmp/token_cache_work.json"
+        auth = create_auth(
+            "client-123",
+            authority="https://login.microsoftonline.com/organizations",
+            auth_flow="manual",
+            cache_path=custom_path,
+            label="work",
+        )
+        assert auth.cache_path == custom_path
+        assert auth.label == "work"
+        assert auth.auth_flow == "manual"
+        assert "organizations" in auth.authority
+
+    @patch("src.auth.msal.PublicClientApplication")
+    def test_none_cache_path_falls_back_to_default(self, mock_app_cls):
+        auth = create_auth("client-123", cache_path=None)
+        assert auth.cache_path == TOKEN_CACHE_PATH

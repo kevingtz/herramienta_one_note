@@ -52,9 +52,9 @@ def main():
     )
     parser.add_argument(
         "--auth-flow",
-        choices=["device_code", "interactive"],
+        choices=["device_code", "interactive", "manual"],
         default="device_code",
-        help="Auth flow to use (default: device_code, use interactive if device code is blocked)",
+        help="Auth flow to use (default: device_code, use manual for restrictive tenants)",
     )
     args = parser.parse_args()
 
@@ -70,12 +70,19 @@ def main():
         sys.exit(1)
 
     # Determine defaults based on --account
+    data_dir = os.path.expanduser("~/.onenote-todo-sync")
     if args.account == "work":
         default_config = "config_work.yaml"
         authority = "https://login.microsoftonline.com/organizations"
+        token_cache_path = os.path.join(data_dir, "token_cache_work.json")
+        db_path = os.path.join(data_dir, "sync_cache_work.db")
+        label = "work"
     else:
         default_config = "config.yaml"
         authority = "https://login.microsoftonline.com/consumers"
+        token_cache_path = None  # use default
+        db_path = None  # use default
+        label = "personal"
 
     # Load config (--config overrides the account-based default)
     config_path = args.config if args.config != "config.yaml" else default_config
@@ -90,7 +97,8 @@ def main():
     logger = setup_logger(config)
     logger.info("Starting OneNote-ToDo Sync (%s account)", args.account)
 
-    auth = create_auth(client_id, authority=authority, auth_flow=args.auth_flow)
+    auth = create_auth(client_id, authority=authority, auth_flow=args.auth_flow,
+                       cache_path=token_cache_path, label=label)
 
     if args.auth:
         user = auth.verify_connection()
@@ -99,7 +107,7 @@ def main():
 
     # All services share the same GraphClient
     graph = GraphClient(auth)
-    cache = SyncCache()
+    cache = SyncCache(db_path) if db_path else SyncCache()
     evaluator = TaskEvaluator(config.get("rules", {}))
     todo = TodoService(graph)
     onenote = OneNoteService(graph)
