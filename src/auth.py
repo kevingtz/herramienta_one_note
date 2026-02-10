@@ -22,12 +22,14 @@ TOKEN_CACHE_PATH = os.path.join(TOKEN_CACHE_DIR, "token_cache.json")
 class AuthManager:
     """Handles MSAL device code flow authentication with persistent token cache."""
 
-    def __init__(self, client_id: str, authority: str, scopes: list, cache_path: str, label: str = ""):
+    def __init__(self, client_id: str, authority: str, scopes: list, cache_path: str,
+                 label: str = "", auth_flow: str = "device_code"):
         self.client_id = client_id
         self.authority = authority
         self.scopes = scopes
         self.cache_path = cache_path
         self.label = label or authority
+        self.auth_flow = auth_flow
         self.cache = msal.SerializableTokenCache()
         self._load_cache()
         self.app = msal.PublicClientApplication(
@@ -50,7 +52,7 @@ class AuthManager:
             logger.debug("Token cache saved to disk (%s)", self.label)
 
     def get_token(self) -> str:
-        """Get a valid access token, using silent auth first, then device code flow."""
+        """Get a valid access token, using silent auth first, then interactive flow."""
         accounts = self.app.get_accounts()
         if accounts:
             result = self.app.acquire_token_silent(self.scopes, account=accounts[0])
@@ -64,6 +66,8 @@ class AuthManager:
                     self.label, result.get("error_description"),
                 )
 
+        if self.auth_flow == "interactive":
+            return self._interactive_flow()
         return self._device_code_flow()
 
     def _device_code_flow(self) -> str:
@@ -95,6 +99,27 @@ class AuthManager:
         error_msg = result.get("error_description", result.get("error", "Unknown error"))
         raise RuntimeError(f"Device code flow failed ({self.label}): {error_msg}")
 
+    def _interactive_flow(self) -> str:
+        """Initiate interactive browser flow for user authentication."""
+        print(
+            "\n" + "=" * 60 + "\n"
+            f"AUTHENTICATION REQUIRED — {self.label}\n"
+            + "=" * 60 + "\n"
+            "A browser window will open for you to sign in.\n"
+            + "=" * 60 + "\n"
+        )
+        sys.stdout.flush()
+        logger.info("Interactive browser flow initiated (%s)", self.label)
+
+        result = self.app.acquire_token_interactive(scopes=self.scopes)
+        if "access_token" in result:
+            self._save_cache()
+            logger.info("Authentication successful via interactive flow (%s)", self.label)
+            return result["access_token"]
+
+        error_msg = result.get("error_description", result.get("error", "Unknown error"))
+        raise RuntimeError(f"Interactive flow failed ({self.label}): {error_msg}")
+
     def verify_connection(self) -> dict:
         """Verify the token works by calling /me endpoint."""
         token = self.get_token()
@@ -111,7 +136,8 @@ class AuthManager:
 
 
 def create_auth(client_id: str,
-                authority: str = "https://login.microsoftonline.com/consumers") -> AuthManager:
+                authority: str = "https://login.microsoftonline.com/consumers",
+                auth_flow: str = "device_code") -> AuthManager:
     """Create AuthManager for a Microsoft account."""
     return AuthManager(
         client_id=client_id,
@@ -119,6 +145,7 @@ def create_auth(client_id: str,
         scopes=SCOPES,
         cache_path=TOKEN_CACHE_PATH,
         label="personal",
+        auth_flow=auth_flow,
     )
 
 

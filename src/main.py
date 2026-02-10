@@ -50,6 +50,12 @@ def main():
         default="personal",
         help="Account to use (default: personal)",
     )
+    parser.add_argument(
+        "--auth-flow",
+        choices=["device_code", "interactive"],
+        default="device_code",
+        help="Auth flow to use (default: device_code, use interactive if device code is blocked)",
+    )
     args = parser.parse_args()
 
     # Load environment
@@ -84,7 +90,7 @@ def main():
     logger = setup_logger(config)
     logger.info("Starting OneNote-ToDo Sync (%s account)", args.account)
 
-    auth = create_auth(client_id, authority=authority)
+    auth = create_auth(client_id, authority=authority, auth_flow=args.auth_flow)
 
     if args.auth:
         user = auth.verify_connection()
