@@ -73,7 +73,7 @@ def main():
     data_dir = os.path.expanduser("~/.onenote-todo-sync")
     if args.account == "work":
         default_config = "config_work.yaml"
-        authority = "https://login.microsoftonline.com/organizations"
+        authority = "https://login.microsoftonline.com/consumers"
         token_cache_path = os.path.join(data_dir, "token_cache_work.json")
         db_path = os.path.join(data_dir, "sync_cache_work.db")
         label = "work"
